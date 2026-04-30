@@ -176,7 +176,13 @@ tbody td{padding:8px 10px;vertical-align:middle;}
   </div>
   <div class="clock-area">
     <span><span class="pulse"></span><span id="clockNow">—</span></span>
-    </div>
+    <span style="color:var(--border2)">|</span>
+    <span>aging: <span class="countdown" id="countdown">—</span></span>
+    <span style="color:var(--border2)">|</span>
+    <span id="sD" style="width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block;"></span>
+    <span id="sL" style="font-size:11px;color:var(--text2);">—</span>
+    <button onclick="syncNow()" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↻</button>
+  </div>
 </div>
 
 <div class="stats-bar" id="statsBar"></div>
