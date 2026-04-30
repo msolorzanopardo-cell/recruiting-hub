@@ -305,7 +305,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
             <option value="STAFF">STAFF</option>
             <option value="REC">REC</option>
           </select>
-          <input type="text" id="nCode" placeholder="Ej: 4900" style="flex:1;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" inputmode="numeric">
+          <input type="text" id="nCode" placeholder="Ej: 4900" oninput="this.value=this.value.replace(/[^a-zA-Z0-9-]/g,'')" style="flex:1;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" inputmode="numeric">
         </div>
       </div>
       <div class="modal-field">
@@ -896,7 +896,7 @@ function saveNewVacancy() {
   const st=document.getElementById('nStatus').value;
   const newV={
     id: _nextId++,
-    pos: code?(pos+' '+codeType+'-'+code):pos,
+    pos: code?(pos.trim()+' '+codeType.trim()+'-'+code.trim()):pos.trim(),
     st, customStatus:st,
     type: document.getElementById('nType').value,
     poc: document.getElementById('nPoc').value.trim(),
