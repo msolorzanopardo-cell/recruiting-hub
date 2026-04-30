@@ -643,6 +643,14 @@ function archiveSingle(id) {
   updBadges(); renderStats(); renderActive(); renderArchive();
   switchTab('archive');
 }
+function deleteVacancy(id) {
+  const v=V.find(x=>x.id===id);
+  if(!v) return;
+  if(!confirm('¿Eliminar "'+v.pos+'" permanentemente? Esta acción no se puede deshacer.')) return;
+  V=V.filter(x=>x.id!==id);
+  scheduleSave();
+  updBadges(); renderStats(); renderActive(); renderArchive();
+}
 function restore(id) {
   const v = V.find(x=>x.id===id); if(!v) return;
   v.arch = false;
@@ -680,6 +688,16 @@ function assignPoc(id,name) {
   else { v.poc=parts.filter(p=>p!==name).join(' / '); scheduleSave(); renderActive(); return; }
   v.poc=parts.join(' / ');
   scheduleSave(); renderActive();
+}
+function makeEditableText(td,id,field) {
+  const v=V.find(x=>x.id===id); if(!v) return;
+  const current=v[field]||'';
+  td.innerHTML='<input type="text" value="'+current+'" placeholder="Remuneración..." style="width:100%;font-family:DM Sans,sans-serif;font-size:11px;border:1px solid var(--accent);border-radius:4px;padding:2px 6px;background:var(--surface);color:var(--text);outline:none;" autofocus>';
+  const input=td.querySelector('input');
+  input.focus(); input.select();
+  function commit(){v[field]=input.value; scheduleSave(); renderActive();}
+  input.addEventListener('blur',commit);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();commit();}if(e.key==='Escape')renderActive();});
 }
 function makeEditable(td,id,field) {
   const v=V.find(x=>x.id===id); if(!v) return;
@@ -755,7 +773,7 @@ function renderActive() {
       +'<td style="text-align:center;" ondblclick="makeEditable(this,'+v.id+',\'ratio\')"><span style="font-family:\'DM Mono\',monospace;font-size:12px;cursor:default;">'+(v.ratio||'0')+'</span></td>'
       +'<td style="text-align:center;" ondblclick="makeEditable(this,'+v.id+',\'inp\')"><span style="font-family:\'DM Mono\',monospace;font-size:12px;cursor:default;">'+(v.inp||'0')+'</span></td>'
       +'<td style="font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(v.vert||'—')+'</td>'
-      +'<td style="font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(v.sal||'—')+'</td>'
+      +'<td style="font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;" ondblclick="makeEditableText(this,'+v.id+',\'sal\')" title="Doble clic para editar">'+(v.sal||'—')+'</td>'
       +'<td style="text-align:center;">'+confBtn(v)+'</td>'
       +'<td style="white-space:nowrap;display:flex;gap:4px;"><button class="btn-detail" onclick="toggleDetail('+v.id+')">'+(v.expanded?'▲':'▼')+' ver</button><button class="btn-archive-row" onclick="archiveSingle('+v.id+')">Archivar</button></td>'
     +'</tr>';
@@ -804,7 +822,7 @@ function renderArchive() {
       '<td style="font-size:11px;">'+(v.vert||'—')+'</td>'+
       '<td style="font-size:11px;max-width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(v.loc||'—')+'</td>'+
       '<td style="font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(v.sal||'—')+'</td>'+
-      '<td><button class="btn-restore" onclick="restore('+v.id+')">Restaurar</button></td>'+
+      '<td style="display:flex;gap:4px;"><button class="btn-restore" onclick="restore('+v.id+')">Restaurar</button><button onclick="deleteVacancy('+v.id+')" style="font-size:11px;padding:3px 8px;border:1px solid var(--red);border-radius:var(--radius-sm);background:transparent;color:var(--red);cursor:pointer;" title="Eliminar">✕</button></td>'+
     '</tr>';
   }).join('');
 }
