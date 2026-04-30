@@ -379,91 +379,88 @@ tbody td{padding:8px 10px;vertical-align:middle;}
 <script>
 
 
-// ── JSONBin Sync ─────────────────────────────────────────────
-const BIN_URL = 'https://api.jsonbin.io/v3/b/69f2b8bd856a6821898bb557';
-const BIN_KEY = '$2a$10$r.H8bgiHQks5hmDKX1HVLu2qtOA5dytmC9HHMnxmMjoXRje4QmeMC';
-let _saving = false;
+
+// ── Sheets Sync ──────────────────────────────────────────────
+const GS_URL = 'https://script.google.com/macros/s/AKfycbzuY6zdix7q3eWfif8ObvxI56tAAnR7N5OSUYt-d2z0m4hj59wZd8sFEZVUPRAYchsaKg/exec';
+let _lastUpdatedAt = 0;
 let _saveTimer = null;
+let _isSaving = false;
 
-function sd(state, label) {
-  const dot = document.getElementById('sD');
-  const lbl = document.getElementById('sL');
-  if (!dot) return;
-  dot.style.background = {ok:'#16a34a',err:'#dc2626',busy:'#f59e0b'}[state]||'#94a3b8';
-  if (lbl) lbl.textContent = label || '';
+function sd(state, txt) {
+  const d = document.getElementById('sD');
+  const l = document.getElementById('sL');
+  if(d) d.style.background = {ok:'#16a34a',err:'#dc2626',busy:'#f59e0b'}[state]||'#94a3b8';
+  if(l) l.textContent = txt||'';
 }
 
-// Read all vacancies from JSONBin
-async function loadBin() {
-  sd('busy','Cargando...');
-  try {
-    const r = await fetch(BIN_URL + '/latest', {
-      headers: {'X-Master-Key': BIN_KEY, 'X-Bin-Meta': 'false'}
-    });
-    const j = await r.json();
-    const saved = j.v;
-    if (Array.isArray(saved) && saved.length > 0) {
-      // Merge: update existing, add new — NEVER replace the whole V
-      saved.forEach(row => {
-        row.arch = row.arch === true || row.arch === 'true';
-        row.customStatus = row.customStatus || row.st || 'OPEN';
-        const existing = V.find(v => String(v.id) === String(row.id));
-        if (existing) {
-          // Only update fields that others could have changed
-          const keep = {expanded: existing.expanded, selected: existing.selected};
-          Object.assign(existing, row, keep);
-        } else {
-          row.expanded = false;
-          row.selected = false;
-          V.push(row);
-        }
-      });
-      renderActive(); renderArchive(); renderStats(); updBadges(); initPocFilter();
-      sd('ok','Al día ' + new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
-    } else {
-      // Bin is empty — push our data up
-      await saveBin();
-    }
-  } catch(e) {
-    sd('err','Sin conexión');
-    console.error('loadBin error:', e);
-  }
+function hhmm() {
+  return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
 }
 
-// Save all vacancies to JSONBin (debounced 1.5s)
+// Save all V to Sheets (debounced 2s)
 function scheduleSave() {
   clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(saveBin, 1500);
+  _saveTimer = setTimeout(doSave, 2000);
 }
 
-async function saveBin() {
-  if (_saving) { scheduleSave(); return; }
-  _saving = true;
+async function doSave() {
+  if(_isSaving){ scheduleSave(); return; }
+  _isSaving = true;
   sd('busy','Guardando...');
   try {
-    const r = await fetch(BIN_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': BIN_KEY
-      },
-      body: JSON.stringify({v: V})
+    // Strip UI-only fields to keep payload small
+    const payload = V.map(v => {
+      const o = Object.assign({}, v);
+      delete o.expanded;
+      delete o.selected;
+      return o;
+    });
+    const r = await fetch(GS_URL, {
+      method:'POST',
+      body: JSON.stringify({action:'write', data:{v:payload, ts:Date.now()}})
     });
     const j = await r.json();
-    if (j.record) {
-      sd('ok','Guardado ' + new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
-    } else {
-      sd('err','Error al guardar');
-    }
-  } catch(e) {
-    sd('err','Sin conexión');
-    console.error('saveBin error:', e);
-  }
-  _saving = false;
+    if(j.ok) { _lastUpdatedAt = Date.now(); sd('ok','Guardado '+hhmm()); }
+    else sd('err','Error al guardar');
+  } catch(e) { sd('err','Sin conexión'); }
+  _isSaving = false;
 }
 
-async function syncNow() { await loadBin(); }
-// ── End JSONBin Sync ─────────────────────────────────────────
+// Read from Sheets — only apply if someone else saved after us
+async function doLoad() {
+  try {
+    const r = await fetch(GS_URL+'?action=read');
+    const j = await r.json();
+    if(!j.ok || !j.data || !j.data.v) {
+      // Sheet empty — push our data up
+      if(j.ok && !j.data) doSave();
+      else sd('ok','Al día '+hhmm());
+      return;
+    }
+    // Only update if Sheet has newer data than what we last saved
+    if(j.updatedAt <= _lastUpdatedAt) { sd('ok','Al día '+hhmm()); return; }
+    // Apply changes from sheet — preserve expanded/selected
+    const saved = j.data.v;
+    saved.forEach(row => {
+      row.arch = row.arch===true||row.arch==='true';
+      row.customStatus = row.st||row.customStatus||'OPEN';
+      const ex = V.find(v=>String(v.id)===String(row.id));
+      if(ex) {
+        const ui = {expanded:ex.expanded, selected:ex.selected};
+        Object.assign(ex, row, ui);
+      } else {
+        row.expanded=false; row.selected=false;
+        V.push(row);
+      }
+    });
+    _lastUpdatedAt = j.updatedAt;
+    renderActive(); renderArchive(); renderStats(); updBadges(); initPocFilter();
+    sd('ok','Actualizado '+hhmm());
+  } catch(e) { sd('err','Sin conexión'); }
+}
+
+async function syncNow() { await doLoad(); }
+// ── End Sync ─────────────────────────────────────────────────
 const ARCHIVED_STATUSES=['FILLED','HOLD','CANCELLED'];
 const COLORS=['#7c6fef','#3ecf8e','#f59e0b','#ef4444','#3b82f6','#ec4899','#f97316','#a78bfa',''];
 
@@ -999,8 +996,8 @@ function scheduleMidnight(){
 
 initPocFilter();updBadges();renderStats();renderActive();
 setInterval(updateClock,1000);updateClock();scheduleMidnight();
-loadBin();
-setInterval(loadBin, 20000);
+doLoad();
+setInterval(doLoad,15000);
 
 </script>
 </body>
