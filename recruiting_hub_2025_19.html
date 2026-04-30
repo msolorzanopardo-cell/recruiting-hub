@@ -489,18 +489,25 @@ async function doLoad() {
       return;
     }
 
-    // Sheet has data — load it fully
+    // Sheet has data — only apply if newer than what we have
     if(j.updatedAt > _lastUpdatedAt) {
-      V = j.data.v.map(row => {
+      const saved = j.data.v;
+      saved.forEach(row => {
         row.arch = row.arch === true || row.arch === 'true';
         row.customStatus = row.st || row.customStatus || 'OPEN';
-        row.expanded = false;
-        row.selected = false;
-        row.color = row.color || '';
-        return row;
+        const ex = V.find(v => String(v.id) === String(row.id));
+        if(ex) {
+          const ui = {expanded: ex.expanded, selected: ex.selected};
+          Object.assign(ex, row, ui);
+        } else {
+          row.expanded = false; row.selected = false; row.color = row.color || '';
+          V.push(row);
+        }
       });
+      // Remove deleted vacancies
+      const sheetIds = new Set(saved.map(r => String(r.id)));
+      V = V.filter(v => v.id < 200 ? sheetIds.has(String(v.id)) : true);
       _lastUpdatedAt = j.updatedAt;
-      // Update nextId to avoid collisions
       const maxId = Math.max(...V.map(v => parseInt(v.id)||0));
       if(maxId >= _nextId) _nextId = maxId + 1;
       initPocFilter(); renderActive(); renderArchive(); renderStats(); updBadges();
@@ -953,8 +960,21 @@ function scheduleMidnight() {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-renderStats(); renderActive(); updBadges();
+// Load seed data immediately so UI is never blank
+V = SEED_DATA.map(row => {
+  const r = Object.assign({}, row);
+  r.arch = r.arch === true || r.arch === 'true';
+  r.customStatus = r.st || r.customStatus || 'OPEN';
+  r.expanded = false;
+  r.selected = false;
+  r.color = r.color || '';
+  return r;
+});
+const _maxId = Math.max(...V.map(v => parseInt(v.id)||0));
+if(_maxId >= _nextId) _nextId = _maxId + 1;
+initPocFilter(); renderStats(); renderActive(); updBadges();
 setInterval(updateClock,1000); updateClock(); scheduleMidnight();
+// Then sync with Sheet in background
 doLoad();
 setInterval(doLoad, 15000);
 
