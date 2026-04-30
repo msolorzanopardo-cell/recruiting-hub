@@ -305,7 +305,7 @@ tbody td{padding:8px 10px;vertical-align:middle;}
             <option value="STAFF">STAFF</option>
             <option value="REC">REC</option>
           </select>
-          <input type="text" id="nCode" placeholder="Ej: 4900" style="flex:1;">
+          <input type="text" id="nCode" placeholder="Ej: 4900" style="flex:1;" oninput="this.value=this.value.replace(/[^0-9]/g,'')" inputmode="numeric">
         </div>
       </div>
       <div class="modal-field">
@@ -423,6 +423,7 @@ let _lastUpdatedAt = 0;
 let _saveTimer = null;
 let _isSaving = false;
 let _nextId = 200;
+let _statMode = 'both'; // 'both' | 'OPEN' | 'NO FORM'
 
 // ── Sync ──────────────────────────────────────────────────────
 function sd(state, txt) {
@@ -513,7 +514,13 @@ async function doLoad() {
   }
 }
 
-async function syncNow() { await doLoad(); }
+async function cycleStatMode() {
+  const modes = ['both','OPEN','NO FORM'];
+  const idx = modes.indexOf(_statMode);
+  _statMode = modes[(idx+1) % modes.length];
+  renderStats();
+}
+function syncNow() { await doLoad(); }
 
 // ── Helpers ───────────────────────────────────────────────────
 function calcAging(val) {
@@ -570,17 +577,17 @@ function renderStats() {
   const act = V.filter(v=>!isArch(v));
   const agings = act.map(v=>calcAging(v.openDate)).filter(n=>!isNaN(n)&&n>=0);
   const avg = agings.length ? Math.round(agings.reduce((a,b)=>a+b,0)/agings.length) : 0;
-  const totalHC = act.reduce((s,v)=>s+(parseInt(v.hc)||0),0);
+  const totalHC = act.reduce((s,v)=>s+(parseInt(v.pen)||0),0);
   const filled = V.filter(v=>v.customStatus==='FILLED').length;
   const hold = V.filter(v=>v.customStatus==='HOLD').length;
   document.getElementById('statsBar').innerHTML=[
     {n:act.length,l:'Total activas',c:''},
-    {n:V.filter(v=>['OPEN','NO FORM'].includes((v.customStatus||'').toUpperCase())&&!isArch(v)).length,l:'Open / No Form',c:'var(--green)'},
+    {n:V.filter(v=>{if(isArch(v))return false;const s=(v.customStatus||'').toUpperCase();return _statMode==='both'?['OPEN','NO FORM'].includes(s):s===_statMode;}).length,l:_statMode==='both'?'Open + No Form':_statMode==='OPEN'?'Solo Open':'Solo No Form',c:'var(--green)',click:true},
     {n:filled,l:'Filled',c:'var(--blue)'},
     {n:hold,l:'On Hold',c:'var(--amber)'},
-    {n:totalHC,l:'Total HC',c:''},
+    {n:totalHC,l:'Total Pending',c:''},
     {n:avg+'d',l:'Aging promedio',c:avg>60?'var(--red)':avg>30?'var(--amber)':'var(--green)'},
-  ].map(s=>'<div class="stat-card"><div class="stat-num" style="color:'+(s.c||'var(--text)')+'">'+s.n+'</div><div class="stat-label">'+s.l+'</div></div>').join('');
+  ].map(s=>'<div class="stat-card"'+(s.click?' onclick="cycleStatMode()" style="cursor:pointer;" title="Clic para filtrar"':'')+' ><div class="stat-num" style="color:'+(s.c||'var(--text)')+'">'+s.n+'</div><div class="stat-label">'+s.l+'</div></div>').join('');
 }
 function getAllPocs() {
   const pocs = new Set();
@@ -737,6 +744,45 @@ function getFilt() {
   });
 }
 
+
+function drawerField(label, value, id, field, placeholder) {
+  const display = value || '<span style="color:var(--text3);font-style:italic;">Sin datos</span>';
+  return '<div class="detail-field">'
+    +'<label>'+label+' <span onclick="editDrawerField(this,'+id+',\''+field+'\',\''+placeholder+'\')" style="color:var(--accent);cursor:pointer;font-size:10px;margin-left:4px;">✏️</span></label>'
+    +'<div class="df-view" data-id="'+id+'" data-field="'+field+'" style="font-size:12px;color:var(--text);padding:6px 2px;border-bottom:1px solid var(--border);min-height:28px;">'+display+'</div>'
+    +'</div>';
+}
+
+function editDrawerField(pencil, id, field, placeholder) {
+  const v = V.find(x=>x.id===id); if(!v) return;
+  const container = pencil.closest('.detail-field');
+  const view = container.querySelector('.df-view');
+  const current = v[field] || '';
+  view.outerHTML = '<input type="text" class="df-edit" value="'+current+'" placeholder="'+placeholder+'" '
+    +'onchange="saveField('+id+',\''+field+'\',this.value)" '
+    +'onblur="renderActive()" '
+    +'style="width:100%;font-family:DM Sans,sans-serif;font-size:12px;color:var(--text);background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:6px 9px;outline:none;">';
+  container.querySelector('.df-edit').focus();
+}
+
+function drawerTextarea(label, value, id, field) {
+  const display = value || '<span style="color:var(--text3);font-style:italic;">Sin job description</span>';
+  return '<div class="detail-field detail-full">'
+    +'<label>'+label+' <span onclick="editDrawerTextarea(this,'+id+',\''+field+'\') " style="color:var(--accent);cursor:pointer;font-size:10px;margin-left:4px;">✏️</span></label>'
+    +'<div class="df-view" style="font-size:12px;color:var(--text);padding:6px 2px;border-bottom:1px solid var(--border);min-height:40px;white-space:pre-wrap;">'+display+'</div>'
+    +'</div>';
+}
+
+function editDrawerTextarea(pencil, id, field) {
+  const v = V.find(x=>x.id===id); if(!v) return;
+  const container = pencil.closest('.detail-field');
+  const view = container.querySelector('.df-view');
+  const current = v[field] || '';
+  view.outerHTML = '<textarea class="df-edit" onchange="saveField('+id+',\''+field+'\',this.value)" onblur="renderActive()" '
+    +'style="width:100%;font-family:DM Sans,sans-serif;font-size:12px;color:var(--text);background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius-sm);padding:7px 9px;outline:none;resize:vertical;min-height:80px;">'+current+'</textarea>';
+  container.querySelector('.df-edit').focus();
+}
+
 function renderActive() {
   renderStats(); updBadges();
   let data=getFilt();
@@ -778,15 +824,17 @@ function renderActive() {
       +'<td style="white-space:nowrap;display:flex;gap:4px;"><button class="btn-detail" onclick="toggleDetail('+v.id+')">'+(v.expanded?'▲':'▼')+' ver</button><button class="btn-archive-row" onclick="archiveSingle('+v.id+')">Archivar</button></td>'
     +'</tr>';
     if(v.expanded){
-      htm+='<tr class="detail-row"><td colspan="18"><div class="detail-drawer">'
-        +'<div class="detail-field"><label>POC — Asignar persona</label><div style="display:flex;flex-direction:column;gap:6px;">'+pocAssignSelect(v)
-        +'<input type="text" value="'+(v.poc||'')+'" placeholder="O escribe manualmente: Mari / Arline..." onchange="saveField('+v.id+',\'poc\',this.value);renderActive()" style="font-family:var(--font-sans);font-size:12px;color:var(--text);background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:6px 9px;outline:none;"></div></div>'
-        +'<div class="detail-field"><label>Hiring Manager</label><input type="text" value="'+(v.hm||'')+'" placeholder="Nombre del HM..." onchange="saveField('+v.id+',\'hm\',this.value)"></div>'
-        +'<div class="detail-field"><label>Horario</label><input type="text" value="'+(v.sch||'')+'" placeholder="Lunes a Viernes 8am-6pm..." onchange="saveField('+v.id+',\'sch\',this.value)"></div>'
-        +'<div class="detail-field"><label>Modalidad</label><input type="text" value="'+(v.mod||'')+'" placeholder="Presencial / Híbrido / Remoto..." onchange="saveField('+v.id+',\'mod\',this.value)"></div>'
-        +'<div class="detail-field"><label>Ubicación</label><input type="text" value="'+(v.loc||'')+'" placeholder="Colombia / LATAM..." onchange="saveField('+v.id+',\'loc\',this.value)"></div>'
-        +'<div class="detail-field"><label>Forecast</label><input type="text" value="'+(v.fc||'')+'" placeholder="MAYO / Arrastrado..." onchange="saveField('+v.id+',\'fc\',this.value)"></div>'
-        +'<div class="detail-field detail-full"><label>Job Description</label><textarea placeholder="Pega o escribe el job description aquí..." onchange="saveField('+v.id+',\'jd\',this.value)">'+(v.jd||'')+'</textarea></div>'
+      htm+='<tr class="detail-row"><td colspan="18">'
+        +'<div class="detail-drawer">'
+        +'<div class="detail-field"><label>POC — Asignar persona</label>'
+        +'<div style="display:flex;flex-direction:column;gap:6px;">'+pocAssignSelect(v)
+        +'<input type="text" value="'+(v.poc||'')+'" placeholder="Escribe manualmente: Mari / Arline..." onchange="saveField('+v.id+',\'poc\',this.value);renderActive()" style="font-family:var(--font-sans);font-size:12px;color:var(--text);background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:6px 9px;outline:none;"></div></div>'
+        +drawerField('Hiring Manager',v.hm,v.id,'hm','Nombre del HM...')
+        +drawerField('Horario',v.sch,v.id,'sch','Lunes a Viernes 8am-6pm...')
+        +drawerField('Modalidad',v.mod,v.id,'mod','Presencial / Híbrido / Remoto...')
+        +drawerField('Ubicación',v.loc,v.id,'loc','Colombia / LATAM...')
+        +drawerField('Forecast',v.fc,v.id,'fc','MAYO / Arrastrado...')
+        +drawerTextarea('Job Description',v.jd,v.id,'jd')
         +'</div></td></tr>';
     }
   });
